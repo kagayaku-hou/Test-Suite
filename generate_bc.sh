@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Generate bitcode for the .c/.cpp tests in $test_dirs.
 
 sysOS=`uname -s`
@@ -28,8 +28,29 @@ then
 # Remove previous bc folder and create a new one.
 ########
 
-git rm -rf "$bc_path"
+CLANG="${_CLANG:=clang}"
+CLANGPP="${_CLANGPP:=clang++}"
+OPT="${_OPT:=opt}"
+
+if !( $CLANG --version | grep -q clang) ; then
+	echo "$CLANG does not exist"
+	exit 1
+fi
+
+MAJOR=$(echo __clang_major__ | $CLANG -E -x c - | tail -n 1)
+MINOR=$(echo __clang_minor__ | $CLANG -E -x c - | tail -n 1)
+PATCHLEVEL=$(echo __clang_patchlevel__ | $CLANG -E -x c - | tail -n 1)
+printf "clang version info: %d-%02d-%02d\\n" $MAJOR $MINOR $PATCHLEVEL
+
+FLAGS=""
+if [ "$MAJOR" -ge 14 ]; then
+    FLAGS="${FLAGS} -Xclang -no-opaque-pointers"
+fi
+
+rm -rf "$bc_path"
 mkdir -p "$bc_path"
+
+printf "FLAGS: %s\n\n" $FLAGS
 
 ########
 # Loops through each folder in test_dirs.
@@ -86,9 +107,9 @@ do
     compiler=""
     if [ "$ext" = "c" ]
     then
-        compiler="clang"
+        compiler="${CLANG}"
     else
-        compiler="clang++"
+        compiler="${CLANGPP}"
     fi
 
     ########
@@ -118,12 +139,12 @@ do
     ########
     if test $td == "mem_leak"
     then
-        $compiler -Wno-everything -S -emit-llvm -fno-discard-value-names -g -I"$root" "$c_f" -o "$bc_f"
+        $compiler -Wno-everything -S -emit-llvm ${FLAGS} -fno-discard-value-names -g -I"$root" "$c_f" -o "$bc_f"
     else
-        $compiler -Wno-everything -S -emit-llvm -fno-discard-value-names -I"$root" "$c_f" -o "$bc_f"
+        $compiler -Wno-everything -S -emit-llvm ${FLAGS} -fno-discard-value-names -I"$root" "$c_f" -o "$bc_f"
     fi
     #llvm-as "$bc_f" -o "$bc_f"
-    opt -S -mem2reg "$bc_f" -o "$bc_f"
+    ${OPT} -S -mem2reg "$bc_f" -o "$bc_f"
   done
 done
 
